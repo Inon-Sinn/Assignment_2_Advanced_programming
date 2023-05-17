@@ -49,14 +49,14 @@ int main(int argc, char *argv[])
 
 	  if (counter == 1024){
         if(flag == 0){
-		    encrypt_pool(data,key);
+            encrypt_pool(data,key);
         }
-        else{
+        else if(flag == 1){
             decrypt_pool(data,key);
         }
+    
 		printf("encripted data: %s\n",data);
 		counter = 0;
-        break;
 	  }
 	}
 	
@@ -65,14 +65,12 @@ int main(int argc, char *argv[])
 		char lastData[counter];
 		lastData[0] = '\0';
 		strncat(lastData, data, counter);
-
-        if(flag == 0){
-		    encrypt(data,key);
+	    if(flag == 0){
+            encrypt_pool(lastData,key);
         }
-        else{
-            decrypt_pool(data,key);
+        else if(flag == 1){
+            decrypt_pool(lastData,key);
         }
-
 		printf("encripted data:\n %s\n",lastData);
 	}
 
@@ -80,7 +78,6 @@ int main(int argc, char *argv[])
 }
 
 void encrypt_pool(char *s,int key){
-    printf("i was ehr\n");
     encrypt(s,key);
 }
 

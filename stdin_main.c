@@ -11,6 +11,8 @@ int main(int argc, char *argv[])
 	    printf("!! data more than 1024 char will be ignored !!\n");
 	    return 0;
 	}
+	
+
 
 	int key = atoi(argv[1]);
 	printf("key is %i \n",key);
@@ -38,7 +40,7 @@ int main(int argc, char *argv[])
 		char lastData[counter];
 		lastData[0] = '\0';
 		strncat(lastData, data, counter);
-		encrypt(lastData,key);
+		decrypt(lastData,key);
 		printf("encripted data:\n %s\n",lastData);
 	}
 
