@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 		char lastData[counter];
 		lastData[0] = '\0';
 		strncat(lastData, data, counter);
-		decrypt(lastData,key);
+		encrypt(lastData,key);
 		printf("encripted data:\n %s\n",lastData);
 	}
 
