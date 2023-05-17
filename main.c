@@ -44,20 +44,18 @@ int main(int argc, char *argv[])
 {
 	if (argc != 3)
 	{
-	    printf("usage: key flag < file \n");
+	    printf("usage: key flag(-e/-d)\n");
+		printf("!! data more than 1024 char will be ignored !!\n");
 	    return 0;
 	}
-	printf("!! data more than 1024 char will be ignored !!\n");
 
     // bool value for encrypt-0 or decrypt-1
     int flag=0;
 
     if(strcmp(argv[2], "-d") == 0){
-        printf("decrypt key\n");
         flag = 1;
     }
     else if(strcmp(argv[2], "-e") == 0){
-        printf("encrypt key\n");
         flag = 0;
     }
     else{
@@ -83,11 +81,11 @@ int main(int argc, char *argv[])
 	  if (counter == 1024){
         if(flag == 0){
             encrypt_pool(data,key);
-			printf("\nencripted data: %s\n",data);
+			printf("encripted data: %s\n",data);
         }
         else if(flag == 1){
             decrypt_pool(data,key);
-			printf("\ndecripted data: %s\n",data);
+			printf("decripted data: %s\n",data);
         }
     
 		
@@ -103,11 +101,11 @@ int main(int argc, char *argv[])
 		strncat(lastData, data, counter);
 	    if(flag == 0){
             encrypt_pool(lastData,key);
-			printf("\nencripted data:\n %s\n",lastData);
+			printf("encripted data:\n %s\n",lastData);
         }
         else if(flag == 1){
             decrypt_pool(lastData,key);
-			printf("\ndecripted data:\n %s\n",lastData);
+			printf("decripted data:\n %s\n",lastData);
         }
 		
 	}
