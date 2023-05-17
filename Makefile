@@ -2,7 +2,7 @@
 all: task stdinExample threadpool
 
 threadpool: main.c
-	gcc main.c -L. -l Codec threadpool
+	gcc main.c -L. -l Codec -o threadpool
 
 task:	codec.h basic_main.c
 	gcc basic_main.c -L. -l Codec -o encoder
