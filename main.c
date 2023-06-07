@@ -5,208 +5,204 @@
 #include <pthread.h>
 #include <unistd.h>
 
-void encrypt_pool(char *s,int key);
-void decrypt_pool(char *s,int key);
+#define BUFFER_SIZE 1024
+
+typedef struct Job{
+    char *chunk;
+    int index;
+    struct Job *next;
+} Job;
 
 typedef struct {
-    char* data;
+    Job *jobs;
+    Job *last;
+    int current_chunk;
+    int encrypt;
     int key;
-} ThreadData;
+    char* result;
+    pthread_mutex_t joblist;
+    pthread_mutex_t res_update;
+    pthread_cond_t next_chunk;
+} ThreadPool;
 
 
-void* encryptThread(void* arg) {
-    ThreadData* job = (ThreadData*)arg;
-    // encrypt data according to key
-    encrypt(job->data, job->key);
-    pthread_exit(NULL);
-}
+void* thread_function(void* arg) {
+    ThreadPool* pool = (ThreadPool*)arg;
 
-void* decryptThread(void* arg) {
-    ThreadData* job = (ThreadData*)arg;
-    // encrypt data according to key
-    decrypt(job->data, job->key);
-    pthread_exit(NULL);
-}
+    while (1) {
+        // lock job list and search for job
+        pthread_mutex_lock(&(pool->joblist));
+        if (pool -> jobs == NULL){
+            pthread_mutex_unlock(&(pool->joblist));
+            break; // all the work was assigned
+        }
+        // Take first job
+        Job* job = pool->jobs;
+        pool->jobs = job->next;
+        pthread_mutex_unlock(&(pool->joblist));
 
+        // de/encrypt according to pool data
+        if(pool->encrypt){
+            // encrypt data according to key
+            encrypt(job->chunk, pool->key);
+        }
+        else
+        {
+            decrypt(job->chunk, pool->key);
+        }
 
-void separateString(const char* originalString, char** separatedStrings) {
-    int originalLength = strlen(originalString);
-    int substringLength = originalLength / 8;
-
-    int i;
-    for (i = 0; i < 8; i++) {
-        strncpy(separatedStrings[i], originalString + i * substringLength, substringLength);
-        separatedStrings[i][substringLength] = '\0';
+        // wait for your turn, then concatenate result
+        while (pool->current_chunk != job->index-1) {
+            // previous chunk not finished
+            pthread_cond_wait(&(pool->next_chunk), &(pool->res_update));
+        }
+        // previous chunk finished
+        // Synchronize and reassemble the data to 1 long string
+        // add space to result
+        char* new_res = malloc((strlen(pool->result)+strlen(job->chunk)+1)*sizeof(char));
+        memcpy(new_res, pool->result, strlen(pool->result)+1);
+        free(pool->result);
+        pool->result = new_res;
+        // append current chunk to result
+        strcat(pool->result, job->chunk);
+        free(job->chunk);
+        free(job);
+        pool->current_chunk++;
+        pthread_cond_broadcast(&(pool->next_chunk));
+        pthread_mutex_unlock(&(pool->res_update));
     }
+
+    pthread_exit(NULL);
 }
 
-int main(int argc, char *argv[])
-{
-	if (argc != 3)
+void init_thread_pool(ThreadPool* pool,int encrypt, int key) {
+    pool->jobs = NULL;
+    pool->last = NULL;
+    pool->current_chunk = -1;
+    pool->encrypt = encrypt;
+    pool->key = key;
+    pool->result = (char*)malloc(sizeof(char));
+    pool->result[0]='\0';
+    pthread_mutex_init(&(pool->joblist), NULL);
+    pthread_mutex_init(&(pool->res_update), NULL);
+    pthread_cond_init(&(pool->next_chunk), NULL);
+}
+
+void destroy_thread_pool(ThreadPool* pool) {
+    free(pool->result);
+    pthread_mutex_destroy(&(pool->joblist));
+    pthread_mutex_destroy(&(pool->res_update));
+    pthread_cond_destroy(&(pool->next_chunk));
+}
+
+
+
+int main(int argc, char *argv[]) {
+if (argc != 3)
 	{
 	    printf("usage: key flag(-e/-d)\n");
-		printf("!! data more than 1024 char will be ignored !!\n");
 	    return 0;
 	}
 
-    // bool value for encrypt-0 or decrypt-1
+    // bool value for encrypt-1 or decrypt-0
     int flag=0;
 
     if(strcmp(argv[2], "-d") == 0){
-        flag = 1;
+        flag = 0;
     }
     else if(strcmp(argv[2], "-e") == 0){
-        flag = 0;
+        flag = 1;
     }
     else{
         printf("usage: key flag < file \n");
         printf("No such flag, availabe flags: encrpyt '-e', decrypt '-d'\n");
         return 0;
     }
-
 	int key = atoi(argv[1]);
-	printf("key is %i \n",key);
 
-	char c;
-	int counter = 0;
-	int dest_size = 1024;
-	char data[dest_size]; 
-	
+    ThreadPool pool_data;
+    ThreadPool* pool = &pool_data;
+    init_thread_pool(pool, flag, key);
 
-	while ((c = getchar()) != EOF)
-	{
-	  data[counter] = c;
-	  counter++;
+    // recieve input and split to chunks, store in list. 
+    char buffer[BUFFER_SIZE];
+    int index = 0;
+    int chunk_index = 0;
+    int ch;
 
-	  if (counter == 1024){
-        if(flag == 0){
-            encrypt_pool(data,key);
-			printf("encripted data: %s\n",data);
+    while ((ch = getchar()) != EOF) {
+        buffer[index] = ch;
+        index++;
+
+        if (index == BUFFER_SIZE) {
+            char* chunk = (char*)malloc(BUFFER_SIZE*sizeof(char)+1);
+            Job* job = (Job*)malloc(sizeof(Job));
+            if(chunk == NULL || job == NULL){
+                printf("Memory not allocated.\n");
+                exit(0);
+            }
+            memcpy(chunk, buffer, BUFFER_SIZE);
+            chunk[BUFFER_SIZE] = '\0';
+            job->chunk = chunk;
+            job->index = chunk_index;
+            
+            // add job to queue
+            if(pool -> last == NULL){
+                // add first job
+                pool -> jobs = job;
+                pool -> last = job;
+            }
+            else
+            {
+                pool->last->next = job;
+                pool->last = job;
+            }
+            chunk_index++;
+            index = 0;
         }
-        else if(flag == 1){
-            decrypt_pool(data,key);
-			printf("decripted data: %s\n",data);
-        }
-    
-		
-		counter = 0;
-		break;
-	  }
-	}
-	
-	if (counter > 0)
-	{
-		char lastData[counter];
-		lastData[0] = '\0';
-		strncat(lastData, data, counter);
-	    if(flag == 0){
-            encrypt_pool(lastData,key);
-			printf("encripted data:\n %s\n",lastData);
-        }
-        else if(flag == 1){
-            decrypt_pool(lastData,key);
-			printf("decripted data:\n %s\n",lastData);
-        }
-		
-	}
+    }
 
-	return 0;
-}
+    if (index > 0) {
+        // add last chunk
+        char* chunk = malloc(index*sizeof(char)+1);
+        Job* job = (Job*)malloc(sizeof(Job));
+        if(chunk == NULL || job == NULL){
+            printf("Memory not allocated.\n");
+            exit(0);
+        }
+        memcpy(chunk, buffer, index);
+        chunk[index] = '\0';
+        job->chunk = chunk;
+        job->index = chunk_index;
+        // add job to queue
+        if(pool -> last == NULL){
+            // add first job
+            pool -> jobs = job;
+            pool -> last = job;
+        }
+        else
+        {
+            pool->last->next = job;
+            pool->last = job;
+        }
+    }
 
-void encrypt_pool(char *data, int key){
-	int numCores = sysconf(_SC_NPROCESSORS_ONLN);
-	int inputLength = strlen(data);
-	int substringLength = inputLength / numCores;
-    int remainingLength = inputLength % numCores;
-	// seperate data
-	char* separatedStrings[numCores];
+    // create threads and let them run on the joblist
+    int numCores = sysconf(_SC_NPROCESSORS_ONLN);
+
+    pthread_t threads[numCores];
     int i;
     for (i = 0; i < numCores; i++) {
-		 // add 2 chars to length, 1 if there is division remainder and second for null terminator
-        separatedStrings[i] = malloc((substringLength + 2) * sizeof(char));
+        pthread_create(&(threads[i]), NULL, thread_function, (void*)pool);
     }
-	// copy from data to substrings
-    int startPos = 0;
-    for (i = 0; i < numCores; i++) {
-        int currentLength = substringLength;
-        if (i < remainingLength) {
-            currentLength++;
-        }
-
-        strncpy(separatedStrings[i], data + startPos, currentLength);
-        separatedStrings[i][currentLength] = '\0';
-
-        startPos += currentLength;
-    }
-	
-    pthread_t threadPool[numCores];
-    ThreadData threadData[numCores];
 
     for (i = 0; i < numCores; i++) {
-        threadData[i].key = key;
-        threadData[i].data = separatedStrings[i];
-
-        pthread_create(&threadPool[i], NULL, encryptThread, (void*)&threadData[i]);
-    }
-	// wait for all encryptions to end
-    for (i = 0; i < numCores; i++) {
-        pthread_join(threadPool[i], NULL);
-    }
-	// combine encrypted substrings
-	data[0] = '\0'; // make data an empty string
-	for (i = 0; i < numCores; i++) {
-        strcat(data, separatedStrings[i]);
-		free(separatedStrings[i]);
+        pthread_join(threads[i], NULL);
     }
 
+    printf("%s", pool->result);
+
+    destroy_thread_pool(pool);
+
+    return 0;
 }
-
-
-void decrypt_pool(char *data, int key){
-	int numCores = sysconf(_SC_NPROCESSORS_ONLN);
-	int inputLength = strlen(data);
-	int substringLength = inputLength / numCores;
-    int remainingLength = inputLength % numCores;
-	// seperate data
-	char* separatedStrings[numCores];
-    int i;
-    for (i = 0; i < numCores; i++) {
-		 // add 2 chars to length, 1 if there is division remainder and second for null terminator
-        separatedStrings[i] = malloc((substringLength + 2) * sizeof(char));
-    }
-	// copy from data to substrings
-    int startPos = 0;
-    for (i = 0; i < numCores; i++) {
-        int currentLength = substringLength;
-        if (i < remainingLength) {
-            currentLength++;
-        }
-
-        strncpy(separatedStrings[i], data + startPos, currentLength);
-        separatedStrings[i][currentLength] = '\0';
-
-        startPos += currentLength;
-    }
-	
-    pthread_t threadPool[numCores];
-    ThreadData threadData[numCores];
-
-    for (i = 0; i < numCores; i++) {
-        threadData[i].key = key;
-        threadData[i].data = separatedStrings[i];
-
-        pthread_create(&threadPool[i], NULL, decryptThread, (void*)&threadData[i]);
-    }
-	// wait for all encryptions to end
-    for (i = 0; i < numCores; i++) {
-        pthread_join(threadPool[i], NULL);
-    }
-	// combine encrypted substrings
-	data[0] = '\0'; // make data an empty string
-	for (i = 0; i < numCores; i++) {
-        strcat(data, separatedStrings[i]);
-		free(separatedStrings[i]);
-    }
-
-}
-
